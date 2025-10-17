@@ -58,7 +58,13 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     //dependencies needed for tensorflow lite
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    // TensorFlow Lite
+    implementation("org.tensorflow:tensorflow-lite:2.13.0") // match the task/audio version
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-task-audio:0.4.4")
+    // Kotlin Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
 }
+
