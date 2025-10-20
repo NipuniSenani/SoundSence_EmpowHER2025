@@ -1,7 +1,6 @@
 package com.example.myapplication
 
 import android.content.Context
-import android.media.AudioRecord
 import android.util.Log
 import org.tensorflow.lite.task.audio.classifier.AudioClassifier
 import org.tensorflow.lite.task.audio.classifier.Classifications
@@ -10,57 +9,44 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.random.Random
 
-class AudioHelper(context: Context) : AudioClassificationHelper {
+/**
+ * A mock version of AudioHelper for testing on the emulator.
+ * Instead of using the microphone, it generates random noise to simulate audio input.
+ */
+class MockAudioHelper(context: Context) : AudioClassificationHelper {
 
     private val classifier: AudioClassifier = AudioClassifier.createFromFile(context, "yamnet.tflite")
 
-    override val lastRecordingFilePath: String = File(context.cacheDir, "last_recording.wav").absolutePath
+    override val lastRecordingFilePath: String = File(context.cacheDir, "last_mock_recording.wav").absolutePath
 
     override fun classify(): List<Classifications> {
-        val audioRecord = classifier.createAudioRecord()
-        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("SoundSense", "AudioRecord failed to initialize. Check device capabilities and permissions.")
-            audioRecord.release()
-            return emptyList()
-        }
-
-        val tensorAudio = classifier.createInputTensorAudio()
-
+        Log.d("SoundSense", "--- Using Mock Audio for Classification ---")
         try {
-            audioRecord.startRecording()
+            val tensorAudio = classifier.createInputTensorAudio()
+            val mockAudioBuffer = ShortArray(tensorAudio.tensorBuffer.flatSize)
 
-            if (audioRecord.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                Log.e("SoundSense", "Recording failed to start, returning empty list.")
-                return emptyList()
+            // Generate random noise to simulate a non-silent audio signal
+            for (i in mockAudioBuffer.indices) {
+                mockAudioBuffer[i] = Random.nextInt(-32768, 32767).toShort()
             }
 
-            // Manually read the audio data into a buffer
-            val audioBuffer = ShortArray(tensorAudio.tensorBuffer.flatSize)
-            val samplesRead = audioRecord.read(audioBuffer, 0, audioBuffer.size)
-            Log.d("SoundSense", "Samples read from AudioRecord: $samplesRead")
+            Log.d("SoundSense", "Generated mock audio with ${mockAudioBuffer.size} samples.")
 
-            if (samplesRead <= 0) {
-                Log.e("SoundSense", "AudioRecord read failed with error code: $samplesRead")
-                return emptyList()
-            }
+            // Save the mock audio so playback can be tested
+            saveRawAudioAsWav(mockAudioBuffer, mockAudioBuffer.size)
 
-            saveRawAudioAsWav(audioBuffer, samplesRead)
-
-            tensorAudio.load(audioBuffer)
+            // Load the mock audio for classification
+            tensorAudio.load(mockAudioBuffer)
 
             val result = classifier.classify(tensorAudio)
-            Log.d("SoundSense", "Classification result: $result")
+            Log.d("SoundSense", "Mock classification result: $result")
             return result
 
         } catch (e: Exception) {
-            Log.e("SoundSense", "Error during classification: ${e.message}")
+            Log.e("SoundSense", "Error during MOCK classification: ${e.message}")
             return emptyList()
-        } finally {
-            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                audioRecord.stop()
-            }
-            audioRecord.release()
         }
     }
 
