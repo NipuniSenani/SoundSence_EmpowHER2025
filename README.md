@@ -33,7 +33,7 @@ The app then processes this result:
 
 ## Project Structure
 
-'''
+```
 MyApplication/
 └── app/
     ├── src/
@@ -55,15 +55,15 @@ MyApplication/
     │               └── audio2.mp3        # Your second test audio file
     │
     └── build.gradle.kts                # App-level build script with dependencies
-'''
+```
 
 ## Setup and Running
 
 1.  **Clone the Repository**
     
-    '''sh
+    ```sh
     git clone https://github.com/your-username/soundsense.git
-    '''
+    ```
 
 2.  **Open in Android Studio**
     -   Open Android Studio and choose "Open an existing project."
@@ -83,7 +83,7 @@ The emulator's microphone is unreliable for real-time recording. This project is
 
 To enable the mock helper, open `app/src/main/java/com/example/myapplication/MainActivity.kt` and change the following line:
 
-'''kotlin
+```kotlin
 // --- The ONLY line you need to change for testing ---
 
 // For real device:
@@ -91,6 +91,6 @@ To enable the mock helper, open `app/src/main/java/com/example/myapplication/Mai
 
 // For emulator testing:
 audioHelper = MockAudioHelper(this)
-'''
+```
 
 The `MockAudioHelper` will cycle through three sources: random noise, `audio1.mp3`, and `audio2.mp3`. This allows you to test the UI, alerts, and playback features without a physical microphone.
