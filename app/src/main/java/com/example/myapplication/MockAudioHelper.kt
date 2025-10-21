@@ -1,6 +1,9 @@
 package com.example.myapplication
 
 import android.content.Context
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.util.Log
 import org.tensorflow.lite.task.audio.classifier.AudioClassifier
 import org.tensorflow.lite.task.audio.classifier.Classifications
@@ -11,43 +14,134 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.random.Random
 
-/**
- * A mock version of AudioHelper for testing on the emulator.
- * Instead of using the microphone, it generates random noise to simulate audio input.
- */
-class MockAudioHelper(context: Context) : AudioClassificationHelper {
+class MockAudioHelper(private val context: Context) : AudioClassificationHelper {
 
     private val classifier: AudioClassifier = AudioClassifier.createFromFile(context, "yamnet.tflite")
+
+    private var mockSource = MockSource.NOISE
+
+    // Enum to manage which mock source to use
+    private enum class MockSource {
+        NOISE,
+        AUDIO_1,
+        AUDIO_2
+    }
 
     override val lastRecordingFilePath: String = File(context.cacheDir, "last_mock_recording.wav").absolutePath
 
     override fun classify(): List<Classifications> {
-        Log.d("SoundSense", "--- Using Mock Audio for Classification ---")
+        Log.d("SoundSense", "--- Classifying with Mock Source: $mockSource ---")
+
+        val audioBuffer = when (mockSource) {
+            MockSource.NOISE -> createNoiseBuffer()
+            MockSource.AUDIO_1 -> decodeAudioFile(R.raw.audio1)
+            MockSource.AUDIO_2 -> decodeAudioFile(R.raw.audio2)
+        }
+
+        // Cycle to the next source for the next run
+        mockSource = when (mockSource) {
+            MockSource.NOISE -> MockSource.AUDIO_1
+            MockSource.AUDIO_1 -> MockSource.AUDIO_2
+            MockSource.AUDIO_2 -> MockSource.NOISE
+        }
+
+        if (audioBuffer == null) {
+            Log.e("SoundSense", "Failed to create or decode audio buffer.")
+            return emptyList()
+        }
+
+        // Now, proceed with the existing logic using the generated or decoded buffer
         try {
             val tensorAudio = classifier.createInputTensorAudio()
-            val mockAudioBuffer = ShortArray(tensorAudio.tensorBuffer.flatSize)
+            tensorAudio.load(audioBuffer)
 
-            // Generate random noise to simulate a non-silent audio signal
-            for (i in mockAudioBuffer.indices) {
-                mockAudioBuffer[i] = Random.nextInt(-32768, 32767).toShort()
-            }
-
-            Log.d("SoundSense", "Generated mock audio with ${mockAudioBuffer.size} samples.")
-
-            // Save the mock audio so playback can be tested
-            saveRawAudioAsWav(mockAudioBuffer, mockAudioBuffer.size)
-
-            // Load the mock audio for classification
-            tensorAudio.load(mockAudioBuffer)
+            saveRawAudioAsWav(audioBuffer, audioBuffer.size)
 
             val result = classifier.classify(tensorAudio)
             Log.d("SoundSense", "Mock classification result: $result")
             return result
-
         } catch (e: Exception) {
             Log.e("SoundSense", "Error during MOCK classification: ${e.message}")
             return emptyList()
         }
+    }
+
+    private fun createNoiseBuffer(): ShortArray {
+        val tensorAudio = classifier.createInputTensorAudio()
+        val bufferSize = tensorAudio.tensorBuffer.flatSize
+        val mockAudioBuffer = ShortArray(bufferSize)
+        for (i in mockAudioBuffer.indices) {
+            mockAudioBuffer[i] = Random.nextInt(-32768, 32767).toShort()
+        }
+        Log.d("SoundSense", "Generated mock noise with ${mockAudioBuffer.size} samples.")
+        return mockAudioBuffer
+    }
+
+    private fun decodeAudioFile(resourceId: Int): ShortArray? {
+        val extractor = MediaExtractor()
+        val afd = context.resources.openRawResourceFd(resourceId)
+        extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+        afd.close()
+
+        // Find the audio track and its format
+        val format = extractor.getTrackFormat(0)
+        val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
+
+        // Critical check for YAMNet requirements
+        val sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        if (sampleRate != 16000 || channelCount != 1) {
+            Log.e("SoundSense", "Audio file at resource $resourceId is not 16kHz mono. Is ${sampleRate}Hz, $channelCount channel(s).")
+            return null
+        }
+
+        extractor.selectTrack(0)
+
+        // Set up the decoder
+        val decoder = MediaCodec.createDecoderByType(mime)
+        decoder.configure(format, null, null, 0)
+        decoder.start()
+
+        val bufferInfo = MediaCodec.BufferInfo()
+        val decodedData = mutableListOf<Short>()
+
+        // Decoding loop
+        while (true) {
+            val inputBufferIndex = decoder.dequeueInputBuffer(10000)
+            if (inputBufferIndex >= 0) {
+                val inputBuffer = decoder.getInputBuffer(inputBufferIndex)!!
+                val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                if (sampleSize < 0) {
+                    decoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    break
+                } else {
+                    decoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, extractor.sampleTime, 0)
+                    extractor.advance()
+                }
+            }
+
+            val outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 10000)
+            if (outputBufferIndex >= 0) {
+                val outputBuffer = decoder.getOutputBuffer(outputBufferIndex)!!
+                val shortBuffer = outputBuffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                val shorts = ShortArray(shortBuffer.remaining())
+                shortBuffer.get(shorts)
+                decodedData.addAll(shorts.toList())
+
+                decoder.releaseOutputBuffer(outputBufferIndex, false)
+
+                if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    break
+                }
+            }
+        }
+
+        decoder.stop()
+        decoder.release()
+        extractor.release()
+
+        Log.d("SoundSense", "Decoded ${decodedData.size} samples from audio file.")
+        return decodedData.toShortArray()
     }
 
     private fun saveRawAudioAsWav(audioData: ShortArray, samplesRead: Int) {
