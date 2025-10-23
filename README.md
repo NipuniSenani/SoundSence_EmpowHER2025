@@ -2,7 +2,11 @@
 
 SoundSense is an Android application built with Kotlin and Jetpack Compose that uses machine learning to listen to the environment and classify sounds in real-time. It is specifically designed to identify and trigger alerts for critical sounds, making it a powerful accessibility tool for users who are hard of hearing.
 
-*(Placeholder for a GIF or screenshot of the app in action)*
+<p align="center">
+  <img src="app/src/main/res/raw/p1.png" alt="Image 1" width="30%">
+  <img src="app/src/main/res/raw/p2.png" alt="Image 2" width="30%">
+  <img src="app/src/main/res/raw/p3.png" alt="Image 3" width="30%">
+</p>
 
 ## Features
 
